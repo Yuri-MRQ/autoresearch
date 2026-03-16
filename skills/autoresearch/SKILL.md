@@ -48,6 +48,8 @@ timeout_multiplier: 2              # Kill at time_budget * this (default: 2)
 pre_command: null                  # Optional: build step before run_command
 eval_command: null                 # Optional: separate eval command
 parallel_experiments: 1            # Number of concurrent experiments (default: 1)
+number_of_experiments: null        # Max experiments before stopping (default: unlimited)
+orientations: null                 # High-level strategy guidance (optional)
 ```
 
 ### Step 2: Resolve Paths
@@ -96,10 +98,11 @@ git checkout autoresearch/$(date +%Y-%m-%d)
 ## Phase 2: The Loop
 
 **CRITICAL RULES:**
-- **NEVER stop.** Run indefinitely until the user manually interrupts.
+- **NEVER stop** unless `number_of_experiments` is set and reached. Otherwise run indefinitely until the user manually interrupts.
 - **NEVER ask for permission.** Every decision is autonomous.
 - **NEVER read .autoresearch_run.log in full.** Always use grep/tail to extract only what you need.
 - **ONE idea per experiment.** Keep diffs minimal and isolated.
+- **If `orientations` is set**, use it as high-level guidance when generating hypotheses. It steers what kinds of changes to focus on or avoid.
 
 ### Mode Selection
 
@@ -114,14 +117,21 @@ Check `parallel_experiments` in the config:
 This is the original loop, used when no parallelism is configured.
 
 ```
-LOOP forever:
+LOOP forever (or until number_of_experiments reached):
 
+  ┌─ 0. STOP CHECK ───────────────────────────────────────┐
+  │ If number_of_experiments is set and total experiments   │
+  │ (from autoresearch.jsonl) >= number_of_experiments:    │
+  │   → Print summary and STOP.                            │
+  └────────────────────────────────────────────────────────┘
+           │
   ┌─ 1. PLAN ─────────────────────────────────────────────┐
   │ Read:                                                   │
   │   - autoresearch.md (full)                             │
   │   - Last ~20 entries from autoresearch.jsonl            │
   │   - All mutable_files                                  │
   │   - read_only_files (if not recently read)             │
+  │ If orientations is set, use it to guide hypothesis.     │
   │ Generate ONE hypothesis for improvement.                │
   │ Write a 1-line description of what you'll try.         │
   └────────────────────────────────────────────────────────┘
@@ -239,8 +249,15 @@ LOOP forever:
 When `parallel_experiments` is greater than 1, the orchestrator dispatches N worker agents simultaneously, each in its own git worktree.
 
 ```
-LOOP forever:
+LOOP forever (or until number_of_experiments reached):
 
+  ┌─ 0. STOP CHECK ───────────────────────────────────────┐
+  │ If number_of_experiments is set and total experiments   │
+  │ (from autoresearch.jsonl) >= number_of_experiments:    │
+  │   → Print summary and STOP.                            │
+  │ If remaining < N, reduce batch size to remaining.      │
+  └────────────────────────────────────────────────────────┘
+           │
   ┌─ 1. PLAN BATCH ───────────────────────────────────────┐
   │ Read:                                                   │
   │   - autoresearch.md (full)                             │
@@ -252,6 +269,7 @@ LOOP forever:
   │ If there are priority retry ideas, use those first.    │
   │ Fill remaining slots with new hypotheses.              │
   │                                                        │
+  │ If orientations is set, use it to guide hypotheses.     │
   │ Generate N INDEPENDENT hypotheses (N = parallel_exps). │
   │ Each must be self-contained — no dependencies between  │
   │ them. Write all N descriptions before dispatching.     │

@@ -44,7 +44,19 @@ pre_command: null
 # If set, metric is extracted from this command's output instead of run_command
 eval_command: null
 
+# Maximum number of experiments to run before stopping (default: unlimited)
+# Set to null or omit for infinite loop (run until manually interrupted)
+number_of_experiments: null
+
 # Number of experiments to run concurrently (default: 1)
 # When > 1, experiments run in parallel git worktrees via subagents.
 # Only the best improvement per batch is kept; other winners retry next batch.
 parallel_experiments: 1
+
+# High-level guidance for the agent's experimentation strategy (optional)
+# Use this to steer what kinds of changes the agent should focus on or avoid.
+# Examples:
+#   - "Focus on architecture changes, not hyperparameter tuning"
+#   - "Only modify the attention mechanism, leave the tokenizer alone"
+#   - "Prioritize inference speed over training speed"
+orientations: null

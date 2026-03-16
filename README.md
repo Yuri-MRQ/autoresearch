@@ -2,7 +2,13 @@
 
 A Claude Code skill that turns Claude into an autonomous research agent. Give it a metric, point it at your code, and let it run experiments overnight — keeping improvements, reverting failures, and looping forever.
 
-Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch), generalized to work with **any measurable task**: ML training, API latency, bundle size, test coverage, algorithm performance, compression ratios, etc.
+Generalized to work with **any measurable task**: ML training, API latency, bundle size, test coverage, algorithm performance, compression ratios, etc.
+
+### Inspired by
+
+- [karpathy/autoresearch](https://github.com/karpathy/autoresearch) — The original. AI agents running autonomous research on single-GPU nanochat training.
+- [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) — Apple Silicon (MLX) port, no PyTorch required. Demonstrated hardware-specific optimization strategies.
+- [davebcn87/pi-autoresearch](https://github.com/davebcn87/pi-autoresearch) — Extension + skill architecture for pi, separating domain-agnostic infrastructure from domain-specific logic.
 
 ## How It Works
 
@@ -88,6 +94,8 @@ Then run `/autoresearch` and point it to the file.
 | `pre_command` | No | `null` | Command to run before each experiment |
 | `eval_command` | No | `null` | Separate eval command (metric extracted from its output) |
 | `parallel_experiments` | No | `1` | Number of experiments to run concurrently |
+| `number_of_experiments` | No | `null` | Max experiments before stopping (`null` = infinite) |
+| `orientations` | No | `null` | High-level strategy guidance for the agent |
 
 See [`skills/autoresearch/templates/config.yaml`](skills/autoresearch/templates/config.yaml) for a fully commented example.
 
