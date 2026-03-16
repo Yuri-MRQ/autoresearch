@@ -1,0 +1,11 @@
+# Autoresearch runtime artifacts
+autoresearch.jsonl
+.autoresearch_run.log
+
+# OS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~

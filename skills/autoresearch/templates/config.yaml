@@ -1,0 +1,45 @@
+# autoresearch.yaml — Configuration for autonomous experimentation
+#
+# Place this file in your project and point the /autoresearch skill to it.
+# All state files (autoresearch.jsonl, autoresearch.md, .autoresearch_run.log)
+# will be created in the same directory as this file.
+
+# Working directory for running experiments (defaults to directory containing this file)
+working_dir: "."
+
+# Files Claude can modify during experiments (relative to working_dir)
+# These are the ONLY files the agent will edit
+mutable_files:
+  - train.py
+
+# Context files the agent should read but never modify (relative to working_dir)
+# Helps the agent understand the system without risking changes
+read_only_files:
+  - prepare.py
+
+# Command to run each experiment
+# Should produce output containing the metric to stdout or stderr
+run_command: "python train.py"
+
+# Name of the metric being optimized (for display/logging)
+metric_name: "val_bpb"
+
+# Optimization direction: "lower" (minimize) or "higher" (maximize)
+metric_direction: "lower"
+
+# Regex pattern with ONE capture group to extract the metric value
+# Applied to the last matching line in the run output
+metric_pattern: "^val_bpb:\\s*([\\d.eE+-]+)"
+
+# Maximum seconds per experiment run
+time_budget: 300
+
+# Kill process at time_budget * timeout_multiplier seconds
+timeout_multiplier: 2
+
+# Optional: command to run before each experiment (e.g., build step)
+pre_command: null
+
+# Optional: separate evaluation command
+# If set, metric is extracted from this command's output instead of run_command
+eval_command: null
