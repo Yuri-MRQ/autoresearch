@@ -60,3 +60,12 @@ parallel_experiments: 1
 #   - "Only modify the attention mechanism, leave the tokenizer alone"
 #   - "Prioritize inference speed over training speed"
 orientations: null
+
+# Free-text instructions for a one-time bootstrap phase before the loop (optional)
+# The agent will create tooling, explore the domain, and document findings.
+# Examples:
+#   - "Create an explore_athena.py script that queries our Athena database.
+#      Database: 'prod_analytics'. Explore available tables and document useful features."
+#   - "Create a data profiling script for our Parquet files in data/.
+#      Profile columns for nulls, distributions, and cardinality."
+setup_instructions: null

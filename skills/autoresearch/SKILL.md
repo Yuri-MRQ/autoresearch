@@ -50,6 +50,7 @@ eval_command: null                 # Optional: separate eval command
 parallel_experiments: 1            # Number of concurrent experiments (default: 1)
 number_of_experiments: null        # Max experiments before stopping (default: unlimited)
 orientations: null                 # High-level strategy guidance (optional)
+setup_instructions: null          # Bootstrap instructions run once before loop (optional)
 ```
 
 ### Step 2: Resolve Paths
@@ -95,6 +96,58 @@ git checkout autoresearch/$(date +%Y-%m-%d)
 
 ---
 
+## Phase 1.5: Bootstrap (optional)
+
+**Skip this phase entirely if `setup_instructions` is null.**
+
+This phase runs exactly once before the loop begins. It creates tooling, explores the domain, and documents findings so the loop has context for hypothesis generation.
+
+### Step 1: Create Tooling
+
+Build the helper scripts described in `setup_instructions` (exploration scripts, data profilers, query harnesses, etc.).
+
+- Write each script to the `working_dir`
+- Make scripts executable: `chmod +x <script>`
+- Add created scripts to `read_only_files` in memory (so the loop knows about them but won't modify them)
+
+### Step 2: Suggest Permissions
+
+Print recommended Claude Code permission rules for the user. For example:
+
+```
+Recommended permissions:
+  Allow: bash(<created_script_1>*)
+  Allow: bash(<created_script_2>*)
+```
+
+**Wait for user acknowledgment.** This is the ONE exception to the "never ask for permission" rule — it's a security boundary. The user must approve before proceeding.
+
+### Step 3: Initial Exploration
+
+Run the created tools to understand the domain:
+
+- Execute each exploration script
+- **NEVER read full output** — use `grep`/`tail` to extract summaries
+- If exploration reveals that `setup_instructions` are wrong (tables don't exist, connections fail, data is missing, etc.), **STOP and tell the user**. Do not proceed with broken assumptions.
+
+### Step 4: Document Findings
+
+Write results to the **Exploration Findings** section of `autoresearch.md`:
+
+- Data sources discovered
+- Schemas and structure
+- Key observations relevant to optimization
+- Tooling created (script names and purposes)
+
+### Step 5: Commit
+
+```bash
+git add -A
+git commit -m "autoresearch: bootstrap — tooling and exploration"
+```
+
+---
+
 ## Phase 2: The Loop
 
 **CRITICAL RULES:**
@@ -132,6 +185,11 @@ LOOP forever (or until number_of_experiments reached):
   │   - All mutable_files                                  │
   │   - read_only_files (if not recently read)             │
   │ If orientations is set, use it to guide hypothesis.     │
+  │ If bootstrap tooling was created, you MAY run           │
+  │ exploration commands during PLAN to gather data for     │
+  │ hypothesis formation. Keep exploration minimal — just   │
+  │ enough to inform the hypothesis. Do NOT get sidetracked │
+  │ into open-ended exploration.                            │
   │ Generate ONE hypothesis for improvement.                │
   │ Write a 1-line description of what you'll try.         │
   └────────────────────────────────────────────────────────┘
@@ -270,6 +328,11 @@ LOOP forever (or until number_of_experiments reached):
   │ Fill remaining slots with new hypotheses.              │
   │                                                        │
   │ If orientations is set, use it to guide hypotheses.     │
+  │ If bootstrap tooling was created, you MAY run           │
+  │ exploration commands during PLAN to gather data for     │
+  │ hypothesis formation. Keep exploration minimal — just   │
+  │ enough to inform the hypotheses. Do NOT get sidetracked │
+  │ into open-ended exploration.                            │
   │ Generate N INDEPENDENT hypotheses (N = parallel_exps). │
   │ Each must be self-contained — no dependencies between  │
   │ them. Write all N descriptions before dispatching.     │
@@ -557,10 +620,11 @@ Good ideas come from understanding the problem deeply. Follow this hierarchy:
 ### Sources (in priority order)
 1. **Priority Retry section** — (parallel mode only) Ideas that showed improvement but couldn't be integrated. Try these FIRST.
 2. **read_only_files** — Understand the full system, data pipeline, constraints
-3. **Wins section** — What has worked? Can you push further in that direction?
-4. **Dead Ends section** — What failed? Avoid repeating. But consider: did it fail because the idea was bad, or because the implementation was wrong?
-5. **Observations** — What patterns have you noticed?
-6. **Domain knowledge** — Apply general ML/engineering/optimization knowledge
+3. **Exploration Findings section** — Domain context discovered during bootstrap (data sources, schemas, key observations). Use this to ground hypotheses in real data characteristics.
+4. **Wins section** — What has worked? Can you push further in that direction?
+5. **Dead Ends section** — What failed? Avoid repeating. But consider: did it fail because the idea was bad, or because the implementation was wrong?
+6. **Observations** — What patterns have you noticed?
+7. **Domain knowledge** — Apply general ML/engineering/optimization knowledge
 
 ### Approach Variation
 Cycle through different types of changes to avoid getting stuck:
@@ -586,6 +650,7 @@ If you're starting in a repo that already has autoresearch state files:
 3. Read last 20 lines of `autoresearch.jsonl` to get recent history
 4. Determine the next experiment ID from the last JSONL entry
 5. Check git status — if there are uncommitted changes, ask the user what to do
-6. **Continue the loop from step 1 (PLAN)**
+6. If `autoresearch.md` has an **Exploration Findings** section, bootstrap already ran. Do NOT re-run bootstrap.
+7. **Continue the loop from step 1 (PLAN)**
 
-Do NOT re-run baseline. Do NOT reinitialize files. Just pick up where the last session left off.
+Do NOT re-run baseline. Do NOT reinitialize files. Do NOT re-run bootstrap. Just pick up where the last session left off.

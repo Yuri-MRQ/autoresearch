@@ -14,6 +14,14 @@ Optimize **{{metric_name}}** ({{metric_direction}} is better).
 |--------|-------|------------|-------------|
 | {{metric_name}} | {{baseline_value}} | #0 (baseline) | Initial baseline |
 
+{{#if setup_instructions}}
+## Exploration Findings
+
+_Domain context discovered during bootstrap. Used by the loop for hypothesis generation._
+
+_(to be filled during bootstrap)_
+
+{{/if}}
 ## Ideas Backlog
 
 _Promising ideas to try next. Add, reorder, or remove as you learn._

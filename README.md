@@ -96,6 +96,7 @@ Then run `/autoresearch` and point it to the file.
 | `parallel_experiments` | No | `1` | Number of experiments to run concurrently |
 | `number_of_experiments` | No | `null` | Max experiments before stopping (`null` = infinite) |
 | `orientations` | No | `null` | High-level strategy guidance for the agent |
+| `setup_instructions` | No | `null` | One-time bootstrap instructions (create tooling, explore domain) |
 
 See [`skills/autoresearch/templates/config.yaml`](skills/autoresearch/templates/config.yaml) for a fully commented example.
 
@@ -197,6 +198,58 @@ With `time_budget: 300` (5 minutes per experiment):
 | Parallel (`parallel_experiments: 5`) | ~60 | Up to 12 (1 per batch) |
 
 The parallel mode runs more experiments, discovering improvements faster even though only one is integrated per batch.
+
+## Bootstrap Phase
+
+Some workflows need one-time setup before the experiment loop can be effective — querying databases to understand schemas, profiling data files, or creating exploration scripts. The `setup_instructions` field drives an optional **Phase 1.5: Bootstrap** that runs between setup and the loop.
+
+### When to Use It
+
+- **Data science / feature engineering** — explore tables, profile columns, understand distributions before optimizing
+- **Complex systems** — create diagnostic scripts to inspect runtime behavior
+- **Unfamiliar codebases** — build analysis tools to map dependencies or hotspots
+
+### How It Works
+
+1. **Create Tooling** — the agent builds helper scripts described in your instructions
+2. **Suggest Permissions** — prints recommended Claude Code permission rules and waits for your approval (the only time the agent pauses for input)
+3. **Initial Exploration** — runs the tools, summarizes findings
+4. **Document Findings** — writes an Exploration Findings section in `autoresearch.md`
+5. **Commit** — `git commit -m "autoresearch: bootstrap — tooling and exploration"`
+
+After bootstrap, the loop uses Exploration Findings as a source for hypothesis generation. If you resume a session where bootstrap already ran, it won't run again.
+
+### Example: Data Science Feature Engineering
+
+```yaml
+mutable_files:
+  - feature_pipeline.py
+
+read_only_files:
+  - model.py
+  - evaluate.py
+
+run_command: "python evaluate.py"
+metric_name: "auc_roc"
+metric_direction: "higher"
+metric_pattern: "AUC-ROC:\\s*([\\d.eE+-]+)"
+time_budget: 120
+
+orientations: |
+  Focus on feature engineering in feature_pipeline.py.
+  Do not change the model architecture or hyperparameters.
+  Prioritize features derived from user behavior tables.
+
+setup_instructions: |
+  Create an explore_data.py script that connects to our Athena database
+  (database: 'prod_analytics', region: 'us-east-1').
+  List all available tables, sample 100 rows from each, and summarize:
+  - Column names and types
+  - Null rates
+  - Cardinality for categorical columns
+  - Basic distributions for numeric columns
+  Focus especially on tables with 'user_' or 'event_' prefixes.
+```
 
 ## Repo Structure
 
