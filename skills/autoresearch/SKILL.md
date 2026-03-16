@@ -47,6 +47,7 @@ time_budget: 300                   # Seconds per experiment (default: 300)
 timeout_multiplier: 2              # Kill at time_budget * this (default: 2)
 pre_command: null                  # Optional: build step before run_command
 eval_command: null                 # Optional: separate eval command
+parallel_experiments: 1            # Number of concurrent experiments (default: 1)
 ```
 
 ### Step 2: Resolve Paths
@@ -99,6 +100,18 @@ git checkout autoresearch/$(date +%Y-%m-%d)
 - **NEVER ask for permission.** Every decision is autonomous.
 - **NEVER read .autoresearch_run.log in full.** Always use grep/tail to extract only what you need.
 - **ONE idea per experiment.** Keep diffs minimal and isolated.
+
+### Mode Selection
+
+Check `parallel_experiments` in the config:
+- **If `parallel_experiments` is 1 (default):** Use **Sequential Mode** (the original loop below)
+- **If `parallel_experiments` is > 1:** Use **Parallel Mode** (dispatches N agents in worktrees)
+
+---
+
+### Sequential Mode (`parallel_experiments: 1`)
+
+This is the original loop, used when no parallelism is configured.
 
 ```
 LOOP forever:
@@ -219,7 +232,222 @@ LOOP forever:
   └──────── GOTO 1 ────────────────────────────────────────┘
 ```
 
+---
+
+### Parallel Mode (`parallel_experiments: N` where N > 1)
+
+When `parallel_experiments` is greater than 1, the orchestrator dispatches N worker agents simultaneously, each in its own git worktree.
+
+```
+LOOP forever:
+
+  ┌─ 1. PLAN BATCH ───────────────────────────────────────┐
+  │ Read:                                                   │
+  │   - autoresearch.md (full)                             │
+  │   - Last ~20 entries from autoresearch.jsonl            │
+  │   - All mutable_files                                  │
+  │   - read_only_files (if not recently read)             │
+  │                                                        │
+  │ Check Priority Retry section in autoresearch.md first. │
+  │ If there are priority retry ideas, use those first.    │
+  │ Fill remaining slots with new hypotheses.              │
+  │                                                        │
+  │ Generate N INDEPENDENT hypotheses (N = parallel_exps). │
+  │ Each must be self-contained — no dependencies between  │
+  │ them. Write all N descriptions before dispatching.     │
+  │                                                        │
+  │ Assign experiment IDs: next_id through next_id + N-1.  │
+  │ Assign batch_id: incremented from last batch.          │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 2. DISPATCH ─────────────────────────────────────────┐
+  │ Launch ALL N agents in a SINGLE message using the      │
+  │ Agent tool with isolation: "worktree".                 │
+  │                                                        │
+  │ Each agent receives the Worker Agent Prompt (below)    │
+  │ with its specific hypothesis and experiment ID.        │
+  │                                                        │
+  │ All N agents run simultaneously in separate worktrees. │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 3. COLLECT ──────────────────────────────────────────┐
+  │ Wait for all N agents to complete.                     │
+  │ Each returns a JSON result:                            │
+  │ {                                                      │
+  │   "metric_value": float or null,                       │
+  │   "status": "keep|discard|crash|timeout",              │
+  │   "description": "what was tried",                     │
+  │   "duration_seconds": int,                             │
+  │   "error": "error message or null"                     │
+  │ }                                                      │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 4. INTEGRATE ────────────────────────────────────────┐
+  │                                                        │
+  │ Sort results with status "keep" by improvement:        │
+  │   - lower: best = smallest metric_value                │
+  │   - higher: best = largest metric_value                │
+  │                                                        │
+  │ ── BEST WINNER (first "keep" after sorting) ──        │
+  │   Cherry-pick its commit from the worktree branch:     │
+  │     git cherry-pick <commit_sha>                       │
+  │   Update best_metric                                   │
+  │   Update autoresearch.md:                              │
+  │     - Current Best section                             │
+  │     - Add to Wins section                              │
+  │   Commit the doc update:                               │
+  │     git add autoresearch.md                            │
+  │     git commit -m "autoresearch: doc update batch #B"  │
+  │                                                        │
+  │ ── OTHER WINNERS (remaining "keep" results) ──        │
+  │   Do NOT cherry-pick (stale baseline).                 │
+  │   Change their status to "priority_retry".             │
+  │   Add their descriptions to Priority Retry section     │
+  │   in autoresearch.md.                                  │
+  │                                                        │
+  │ ── NOT IMPROVED / CRASH / TIMEOUT ──                  │
+  │   Add to Dead Ends in autoresearch.md.                 │
+  │   No git changes needed (worktrees are discarded).     │
+  │                                                        │
+  │ Commit doc updates:                                    │
+  │   git add autoresearch.md                              │
+  │   git commit -m "autoresearch: doc update batch #B"    │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 5. LOG ──────────────────────────────────────────────┐
+  │ Append N JSON lines to autoresearch.jsonl (one per     │
+  │ experiment, using sequential IDs):                     │
+  │ {                                                      │
+  │   "id": N,                                             │
+  │   "batch_id": B,                                       │
+  │   "timestamp": "ISO8601",                              │
+  │   "commit": "short_sha or null",                       │
+  │   "status": "keep|discard|crash|timeout|priority_retry"│
+  │   "metric_value": float or null,                       │
+  │   "best_metric": float,                                │
+  │   "baseline_metric": float,                            │
+  │   "duration_seconds": int,                             │
+  │   "description": "what was tried",                     │
+  │   "error": "error message or null"                     │
+  │ }                                                      │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 6. REFLECT (every 5 experiments by total count) ─────┐
+  │ Re-read autoresearch.md and recent JSONL entries.      │
+  │ Update Observations section with patterns noticed:     │
+  │   - What types of changes tend to help?                │
+  │   - What types consistently fail?                      │
+  │   - Are there diminishing returns?                     │
+  │   - What hasn't been tried yet?                        │
+  └────────────────────────────────────────────────────────┘
+           │
+  ┌─ 7. COMPACT (every 10 experiments by total count) ────┐
+  │ Run /compact to free context window.                   │
+  │ After compaction, re-read autoresearch.md to restore   │
+  │ necessary context.                                     │
+  └────────────────────────────────────────────────────────┘
+           │
+  └──────── GOTO 1 ────────────────────────────────────────┘
+```
+
+### Worker Agent Prompt Template
+
+When dispatching each worker agent, use the Agent tool with `isolation: "worktree"` and the following prompt. Replace all `{...}` placeholders with actual values.
+
+```
+You are an autoresearch worker agent. Your job is to implement ONE experiment and report the result.
+
+## Your Hypothesis
+Experiment #{experiment_id}: {description}
+
+## Config
+- run_command: {run_command}
+- metric_name: {metric_name}
+- metric_direction: {metric_direction}
+- metric_pattern: {metric_pattern}
+- time_budget: {time_budget}
+- timeout_multiplier: {timeout_multiplier}
+- pre_command: {pre_command}
+- eval_command: {eval_command}
+- best_metric: {best_metric}
+
+## Mutable Files
+{for each file: path and current content}
+
+## Instructions
+
+1. **IMPLEMENT**: Edit ONLY these files: {mutable_files}. Make the minimal change to test the hypothesis. Do NOT refactor or clean up.
+
+2. **COMMIT**: Stage and commit your changes:
+   git add {mutable_files}
+   git commit -m "autoresearch #{experiment_id}: {description}"
+
+3. **RUN**: Execute the experiment with timeout:
+   {if pre_command} Run: {pre_command} {endif}
+
+   timeout_seconds = {time_budget} * {timeout_multiplier}
+
+   bash -c '{run_command} > .autoresearch_run.log 2>&1 &
+     PID=$!
+     ( sleep {timeout_seconds} && kill $PID 2>/dev/null && echo "AUTORESEARCH_TIMEOUT" >> .autoresearch_run.log ) &
+     TIMER_PID=$!
+     wait $PID
+     EXIT_CODE=$?
+     kill $TIMER_PID 2>/dev/null
+     exit $EXIT_CODE'
+
+   Record the start time before running and compute duration_seconds after.
+
+4. **EVALUATE**: Extract the metric:
+   grep -E '{metric_pattern}' .autoresearch_run.log | tail -1 | sed -E 's/{metric_pattern}/\1/'
+
+   Check for AUTORESEARCH_TIMEOUT in the log.
+
+5. **DECIDE**:
+   - If metric extracted and improved (direction={metric_direction}): status = "keep"
+   - If metric extracted but not improved: status = "discard"
+   - If AUTORESEARCH_TIMEOUT found: status = "timeout"
+   - If metric extraction failed or command crashed: status = "crash"
+     - On crash: read last 50 lines of .autoresearch_run.log, attempt up to 2 trivial fixes (syntax/import/typo), recommit and rerun. If still failing: status = "crash".
+
+6. **REPORT**: Your FINAL message must be ONLY this JSON (no other text):
+   {
+     "metric_value": <float or null if crash/timeout>,
+     "status": "<keep|discard|crash|timeout>",
+     "description": "{description}",
+     "duration_seconds": <int>,
+     "error": "<error message or null>"
+   }
+```
+
+**IMPORTANT:** All N Agent calls MUST be in a single message so they run in parallel. Example with N=3:
+
+```
+Use the Agent tool three times in one message:
+- Agent 1: description="autoresearch worker #4", prompt=<worker prompt for hypothesis A>, isolation="worktree"
+- Agent 2: description="autoresearch worker #5", prompt=<worker prompt for hypothesis B>, isolation="worktree"
+- Agent 3: description="autoresearch worker #6", prompt=<worker prompt for hypothesis C>, isolation="worktree"
+```
+
+### Cherry-Pick Integration
+
+After collecting results, to integrate the winning experiment:
+
+```bash
+# Get the commit SHA from the winning worktree branch
+# The Agent tool returns the worktree branch name in its result
+git cherry-pick <winning_commit_sha>
+```
+
+If the cherry-pick has conflicts (unlikely since each worker edits independently from the same base):
+```bash
+git cherry-pick --abort
+```
+In this case, treat the winner as a "priority_retry" instead.
+
 ### Stale Streak Detection
+
+Track consecutive non-improvements across batches. A batch where NO experiment improved counts as N failures toward the streak.
 
 If **5 or more consecutive experiments** result in non-improvement (discard/crash/timeout):
 1. Re-read ALL mutable_files and read_only_files from scratch
@@ -309,11 +537,12 @@ When the streak counter hits 5 non-improvements in a row:
 Good ideas come from understanding the problem deeply. Follow this hierarchy:
 
 ### Sources (in priority order)
-1. **read_only_files** — Understand the full system, data pipeline, constraints
-2. **Wins section** — What has worked? Can you push further in that direction?
-3. **Dead Ends section** — What failed? Avoid repeating. But consider: did it fail because the idea was bad, or because the implementation was wrong?
-4. **Observations** — What patterns have you noticed?
-5. **Domain knowledge** — Apply general ML/engineering/optimization knowledge
+1. **Priority Retry section** — (parallel mode only) Ideas that showed improvement but couldn't be integrated. Try these FIRST.
+2. **read_only_files** — Understand the full system, data pipeline, constraints
+3. **Wins section** — What has worked? Can you push further in that direction?
+4. **Dead Ends section** — What failed? Avoid repeating. But consider: did it fail because the idea was bad, or because the implementation was wrong?
+5. **Observations** — What patterns have you noticed?
+6. **Domain knowledge** — Apply general ML/engineering/optimization knowledge
 
 ### Approach Variation
 Cycle through different types of changes to avoid getting stuck:

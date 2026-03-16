@@ -43,3 +43,8 @@ pre_command: null
 # Optional: separate evaluation command
 # If set, metric is extracted from this command's output instead of run_command
 eval_command: null
+
+# Number of experiments to run concurrently (default: 1)
+# When > 1, experiments run in parallel git worktrees via subagents.
+# Only the best improvement per batch is kept; other winners retry next batch.
+parallel_experiments: 1

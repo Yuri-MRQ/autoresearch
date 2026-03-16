@@ -87,6 +87,7 @@ Then run `/autoresearch` and point it to the file.
 | `working_dir` | No | `"."` | Working directory (relative to config file) |
 | `pre_command` | No | `null` | Command to run before each experiment |
 | `eval_command` | No | `null` | Separate eval command (metric extracted from its output) |
+| `parallel_experiments` | No | `1` | Number of experiments to run concurrently |
 
 See [`skills/autoresearch/templates/config.yaml`](skills/autoresearch/templates/config.yaml) for a fully commented example.
 
@@ -151,12 +152,52 @@ metric_pattern: "throughput:\\s*([\\d.eE+-]+)\\s*ops/s"
 time_budget: 30
 ```
 
+## Parallel Mode
+
+By default, autoresearch runs one experiment at a time. Set `parallel_experiments` to run multiple experiments simultaneously:
+
+```yaml
+parallel_experiments: 3    # Run 3 experiments at once
+```
+
+### How It Works
+
+When `parallel_experiments` is greater than 1, the orchestrator:
+
+1. **Plans a batch** of N independent hypotheses
+2. **Dispatches N worker agents** in parallel, each in its own git worktree
+3. **Collects results** from all workers
+4. **Integrates the best winner** by cherry-picking its commit onto the main branch
+
+### Conservative Integration
+
+Since all N experiments in a batch run against the same baseline, only the single best improvement is kept. Other "winners" may conflict with the best one's changes, so they're placed in a **Priority Retry** queue and tried first in the next batch.
+
+This means:
+- **Throughput**: N experiments run in the time of 1 (wall-clock)
+- **Tradeoff**: At most 1 winner per batch (other winners are retried next batch)
+- **Net effect**: Significantly faster exploration, especially when most experiments fail
+
+### Example
+
+With `time_budget: 300` (5 minutes per experiment):
+
+| Mode | Experiments/hour | Winners integrated |
+|------|------------------|--------------------|
+| Sequential (`parallel_experiments: 1`) | ~12 | Up to 12 |
+| Parallel (`parallel_experiments: 3`) | ~36 | Up to 12 (1 per batch) |
+| Parallel (`parallel_experiments: 5`) | ~60 | Up to 12 (1 per batch) |
+
+The parallel mode runs more experiments, discovering improvements faster even though only one is integrated per batch.
+
 ## Repo Structure
 
 ```
 autoresearch/
   CLAUDE.md                           # Project instructions for Claude
   README.md                           # This file
+  ai/
+    parallel-experiments.md           # Design doc for parallel execution
   skills/autoresearch/
     SKILL.md                          # The core skill definition
     templates/

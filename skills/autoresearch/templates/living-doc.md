@@ -20,6 +20,12 @@ _Promising ideas to try next. Add, reorder, or remove as you learn._
 
 1. _(to be filled by the agent)_
 
+## Priority Retry
+
+_Ideas that showed improvement in parallel but couldn't be integrated (measured against stale baseline). Try these first in the next batch._
+
+_(none yet)_
+
 ## Experiment Log
 
 | # | Status | {{metric_name}} | Best | Description |
