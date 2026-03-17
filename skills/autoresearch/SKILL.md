@@ -280,7 +280,6 @@ git commit -m "autoresearch: bootstrap — tooling and exploration"
 
 **CRITICAL RULES:**
 - **NEVER stop** unless `number_of_experiments` is set and reached. Otherwise run indefinitely until the user manually interrupts.
-- **NEVER ask for permission.** Every decision is autonomous.
 - **NEVER read .autoresearch_run.log in full.** Always use grep/tail to extract only what you need.
 - **NEVER use `$()`, backticks, nested quotes, command substitution, `&&`, `||`, `;`, or `cd` in Bash calls during the loop.**
   Each command must be its own separate Bash tool call — no chaining, no directory changes.
