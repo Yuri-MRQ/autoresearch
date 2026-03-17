@@ -305,8 +305,13 @@ LOOP forever (or until number_of_experiments reached):
   │                                                        │
   │ ── CRASH ──                                            │
   │   Read last 50 lines of .autoresearch_run.log          │
-  │   Attempt trivial fix (syntax error, import, typo)     │
-  │   Max 2 retry attempts                                 │
+  │   INVESTIGATE — don't just look at the error message:  │
+  │     - Trace the data/code flow to find the root cause  │
+  │     - Read relevant read_only_files if needed          │
+  │     - The error may be in your code's assumptions,     │
+  │       not just syntax — dig deeper                     │
+  │   Fix the root cause in mutable_files, recommit, rerun │
+  │   Max 3 retry attempts                                 │
   │   If still failing → revert same as NOT IMPROVED       │
   │   status = "crash"                                     │
   │                                                        │
@@ -505,6 +510,9 @@ Experiment #{experiment_id}: {description}
 ## Mutable Files
 {for each file: path and current content}
 
+## Read-Only Files (context for debugging)
+{for each read_only_file: path — do NOT include content, the worker will read them if needed during crash investigation}
+
 ## Instructions
 
 1. **IMPLEMENT**: Edit ONLY these files: {mutable_files}. Make the minimal change to test the hypothesis. Do NOT refactor or clean up.
@@ -526,7 +534,13 @@ Experiment #{experiment_id}: {description}
    - If metric extracted but not improved: status = "discard"
    - If AUTORESEARCH_TIMEOUT found: status = "timeout"
    - If metric extraction failed or command crashed: status = "crash"
-     - On crash: read last 50 lines of .autoresearch_run.log, attempt up to 2 trivial fixes (syntax/import/typo), recommit and rerun. If still failing: status = "crash".
+     - On crash: INVESTIGATE, don't just look at the surface error.
+       1. Read last 50 lines of .autoresearch_run.log
+       2. Trace the error through the code — read read_only_files and mutable_files to understand the data/code flow
+       3. The crash is likely caused by your change's assumptions being wrong, not just a typo. Diagnose the root cause.
+       4. Fix the root cause in mutable_files, recommit, and rerun.
+       5. Up to 3 retry attempts. Each retry should be a different fix based on what you learned.
+       6. If still failing after 3 retries: status = "crash".
 
 6. **REPORT**: Your FINAL message must be ONLY this JSON (no other text):
    {
@@ -619,11 +633,14 @@ macOS doesn't have GNU `timeout`. The `autoresearch_run.sh` script (generated du
 
 ### Crash Recovery
 1. Read last 50 lines of `.autoresearch_run.log`
-2. Identify the error type:
-   - **Syntax error** → fix the typo, retry
-   - **Import error** → fix the import, retry
-   - **Runtime error** → if trivial fix is obvious, retry; otherwise revert
-3. Maximum **2 retries** per experiment
+2. **Investigate the root cause** — don't just pattern-match the error type:
+   - Read the relevant code path that produced the error
+   - Read `read_only_files` if the error involves data flow, schemas, or pipeline logic
+   - The crash usually means your change made a wrong assumption (e.g., a column doesn't exist, a function returns a different shape, a dependency isn't available). Trace the flow to find out why.
+   - **Syntax/import error** → fix directly
+   - **Runtime error** → trace the data/code flow, understand what your change assumed vs. what actually happens, fix accordingly
+   - **Data error** (missing column, wrong type, shape mismatch) → read the pipeline code to understand what data is actually available, then adapt your change
+3. Maximum **3 retries** per experiment. Each retry should be a different fix informed by what you learned from the previous failure.
 4. If all retries fail → revert and log as crash
 
 ### 5+ Consecutive Failures
