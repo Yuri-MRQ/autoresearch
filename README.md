@@ -1,6 +1,6 @@
 # Autoresearch
 
-A Claude Code skill that turns Claude into an autonomous research agent. Give it a metric, point it at your code, and let it run experiments overnight — keeping improvements, reverting failures, and looping forever.
+A Claude Code skill that turns Claude into an autonomous research agent. Give it a metric, point it at your code, and let it run experiments overnight — keeping improvements, reverting failures, and looping forever. All complex shell commands are pre-approved during setup, so the loop runs without permission prompts.
 
 Generalized to work with **any measurable task**: ML training, API latency, bundle size, test coverage, algorithm performance, compression ratios, etc.
 
@@ -110,6 +110,8 @@ When you run `/autoresearch`, these files are created in the same directory as y
 | `autoresearch.md` | Yes | Living document with wins, dead ends, observations |
 | `autoresearch.jsonl` | No | Structured experiment log (one JSON line per run) |
 | `.autoresearch_run.log` | No | Output from the last experiment run |
+| `autoresearch_run.sh` | No | Generated script: runs experiment with timeout + timing |
+| `autoresearch_extract.sh` | No | Generated script: extracts metric from run output |
 
 All experiments happen on a dedicated `autoresearch/<date>` git branch.
 
