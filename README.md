@@ -112,6 +112,7 @@ When you run `/autoresearch`, these files are created in the same directory as y
 | `.autoresearch_run.log` | No | Output from the last experiment run |
 | `autoresearch_run.sh` | No | Generated script: runs experiment with timeout + timing |
 | `autoresearch_extract.sh` | No | Generated script: extracts metric from run output |
+| `autoresearch_worktree.sh` | No | Generated script: manages git worktrees for parallel mode |
 
 All experiments happen on a dedicated `autoresearch/<date>` git branch.
 
